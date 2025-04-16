@@ -3,7 +3,6 @@ import * as anchor from "@coral-xyz/anchor";
 import { type Program, BN } from "@coral-xyz/anchor";
 import { Escrowed } from "../target/types/escrowed";
 import {
-  Connection,
   Keypair,
   LAMPORTS_PER_SOL,
   PublicKey,
@@ -11,111 +10,18 @@ import {
   Transaction,
   TransactionInstruction,
 } from "@solana/web3.js";
-import {
-  MINT_SIZE,
-  TOKEN_2022_PROGRAM_ID,
-  type TOKEN_PROGRAM_ID,
-  createAssociatedTokenAccountIdempotentInstruction,
-  createInitializeMint2Instruction,
-  createMintToInstruction,
-  getAssociatedTokenAddressSync,
-  getMinimumBalanceForRentExemptMint,
-} from "@solana/spl-token";
-import { randomBytes } from "crypto";
-
+import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { confirmTransaction, makeKeypairs } from "@solana-developers/helpers";
+import { TOKEN_PROGRAM } from "./types"
+import{ getRandomBigNumber, areBnEqual } from "./lib/lib";
+import { createTokenAndMintTo, getTokenBalanceOn } from "./lib/service";
 
-const TOKEN_PROGRAM: typeof TOKEN_2022_PROGRAM_ID | typeof TOKEN_PROGRAM_ID =
-  TOKEN_2022_PROGRAM_ID;
-
-export const getRandomBigNumber = (size: number = 8) => {
-  return new BN(randomBytes(size));
-};
-
-function areBnEqual(a: unknown, b: unknown): boolean | undefined {
-  const isABn = a instanceof BN;
-  const isBBn = b instanceof BN;
-
-  if (isABn && isBBn) {
-    return a.eq(b);
-  } else if (isABn === isBBn) {
-    return undefined;
-  } else {
-    return false;
-  }
-}
 expect.addEqualityTesters([areBnEqual]);
 
-const createTokenAndMintTo = async (
-  connection: Connection,
-  payer: PublicKey,
-  tokenMint: PublicKey,
-  decimals: number,
-  mintAuthority: PublicKey,
-  mintTo: Array<{ recepient: PublicKey; amount: number }>
-): Promise<Array<TransactionInstruction>> => {
-  let minimumLamports = await getMinimumBalanceForRentExemptMint(connection);
-
-  let createTokeIxs = [
-    SystemProgram.createAccount({
-      fromPubkey: payer,
-      newAccountPubkey: tokenMint,
-      lamports: minimumLamports,
-      space: MINT_SIZE,
-      programId: TOKEN_PROGRAM,
-    }),
-    createInitializeMint2Instruction(
-      tokenMint,
-      decimals,
-      mintAuthority,
-      null,
-      TOKEN_PROGRAM
-    ),
-  ];
-
-  let mintToIxs = mintTo.flatMap(({ recepient, amount }) => {
-    const ataAddress = getAssociatedTokenAddressSync(
-      tokenMint,
-      recepient,
-      false,
-      TOKEN_PROGRAM
-    );
-
-    return [
-      createAssociatedTokenAccountIdempotentInstruction(
-        payer,
-        ataAddress,
-        recepient,
-        tokenMint,
-        TOKEN_PROGRAM
-      ),
-      createMintToInstruction(
-        tokenMint,
-        ataAddress,
-        mintAuthority,
-        amount,
-        [],
-        TOKEN_PROGRAM
-      ),
-    ];
-  });
-
-  return [...createTokeIxs, ...mintToIxs];
-};
-
-const getTokenBalanceOn = (
-  connection: Connection,
-) => async (
-  tokenAccountAddress: PublicKey,
-): Promise<BN> => {
-  const tokenBalance = await connection.getTokenAccountBalance(tokenAccountAddress);
-  return new BN(tokenBalance.value.amount);
-};
-
 // Jest debug console it too verbose.
-// const jestConsole = console;
+const jestConsole = console;
 
-describe("escrowed", () => {
+describe("Escrowed-alternative", () => {
   // Use the cluster and the keypair from Anchor.toml
   anchor.setProvider(anchor.AnchorProvider.env());
 
@@ -151,7 +57,7 @@ describe("escrowed", () => {
   // Creates Alice and Bob accounts, 2 token mints, and associated token
   // accounts for both tokens for both users.
   beforeAll(async () => {
-    // global.console = require('console');
+    // global.console = require('console');//---
 
     const giveAliceAndBobSolIxs: Array<TransactionInstruction> = [
       alice,
@@ -204,7 +110,7 @@ describe("escrowed", () => {
     ]);
   });
 
-  // afterAll(() => {
+  // afterAll(() => {  //---
   //   global.console = jestConsole;
   // });
 
@@ -345,6 +251,9 @@ describe("escrowed", () => {
     );
 
     // Verify state before the offer is taken.
+    // console.log("Alice USDC balance: ",(await getTokenBalance(aliceUsdcAccount)).toNumber());
+    // console.log("BN", new BN(90_000_000).toNumber());
+    
 
     expect(await getTokenBalance(aliceUsdcAccount)).toEqual(new BN(90_000_000));
     expect(await getTokenBalance(aliceWifAccount)).toEqual(new BN(5_000_000));
